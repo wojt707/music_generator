@@ -1,19 +1,21 @@
 import os
 import json
 from .hdf5_getters import *
+from ..utils import clean_name
 
 
 # Extract metadata for a single song
 def get_song_metadata(h5_file_path):
     """Get relevant fields from an .h5 file."""
     try:
+        file_metadata = {}
         with open_h5_file_read(h5_file_path) as h5:
-            msd_id = os.path.splitext(os.path.basename(h5_file_path))[0]
+            msd_id = str(os.path.splitext(os.path.basename(h5_file_path))[0])
             artist_location = get_artist_location(h5)
-            metadata = {
+            file_metadata = {
                 "msd_id": msd_id,
-                "title": get_title(h5),
-                "artist_name": get_artist_name(h5),
+                "title": clean_name(get_title(h5)),
+                "artist_name": clean_name(get_artist_name(h5)),
                 "artist_location": (
                     artist_location.decode("utf-8") if artist_location else ""
                 ),
@@ -36,7 +38,7 @@ def get_song_metadata(h5_file_path):
                     else 0.0
                 ),
             }
-            return metadata
+            return file_metadata
     except Exception as e:
         print(f"Error processing file {h5_file_path}: {e}")
         return None
@@ -52,9 +54,9 @@ def get_all_songs_metadata(h5_root_dir):
         for file in files:
             if file.endswith(".h5"):
                 h5_file_path = os.path.join(root, file)
-                metadata = get_song_metadata(h5_file_path)
-                if metadata:
-                    all_metadata.append(metadata)
+                file_metadata = get_song_metadata(h5_file_path)
+                if file_metadata:
+                    all_metadata.append(file_metadata)
 
     print(f"Metadata for {len(all_metadata)} extracted.")
     return all_metadata
@@ -63,5 +65,6 @@ def get_all_songs_metadata(h5_root_dir):
 def generate_metadata_json(h5_root_dir, output_json_path):
     """Save the metadata to a JSON file."""
     with open(output_json_path, "w", encoding="utf-8") as f:
+        print(f"Preparing metadata...")
         json.dump(get_all_songs_metadata(h5_root_dir), f, indent=4)
         print(f"Metadata saved to {output_json_path}")

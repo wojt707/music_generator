@@ -9,6 +9,9 @@ class SpotifyHandler:
             requests_timeout=30,
         )
 
+    def set_token(self, token: str) -> None:
+        self.token = token
+
     def estimate_artist_genre(self, artist_name: str, genre_mapping):
 
         results = self.spotify.search(q="artist:" + artist_name, type="artist", limit=1)

@@ -2,7 +2,7 @@ import os
 from collections import defaultdict
 
 
-def count_files(dir):
+def get_files_number(dir):
     total_files = 0
     ext_count = defaultdict(int)
 
@@ -14,10 +14,10 @@ def count_files(dir):
     return total_files, ext_count
 
 
-def print_stats(dir):
+def print_files_stats(dir):
     print("=" * 30)
     print(dir)
-    total, ext_count = count_files(dir)
+    total, ext_count = get_files_number(dir)
     print(f"Total number of files: {total}")
     print("Number of files by extension:")
     for ext, count in ext_count.items():
