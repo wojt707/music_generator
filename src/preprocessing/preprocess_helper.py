@@ -190,17 +190,16 @@ def handle_duplicates(dataset_path):
                 print(f"Error deleting files {midi_path} or {json_path}: {e}")
 
 
-def delete_empty_directories(dataset_path):
+def delete_empty_directories(src_dir):
     """
     Recursively delete all empty directories in the dataset path.
     """
-    for dirpath, dirnames, filenames in os.walk(dataset_path, topdown=False):
-        if not dirnames and not filenames:  # If the directory is empty
-            try:
-                os.rmdir(dirpath)
-                print(f"Deleted empty directory: {dirpath}")
-            except Exception as e:
-                print(f"Error deleting directory {dirpath}: {e}")
+    for dirpath, _, _ in os.walk(src_dir, topdown=False):
+        try:
+            os.rmdir(dirpath)
+            print(f"Deleted empty directory: {dirpath}")
+        except OSError as e:
+            print(f"Error deleting directory {dirpath}: {e}")
 
 
 def verify_song_directories(base_path):

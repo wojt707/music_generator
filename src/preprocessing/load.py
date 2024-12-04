@@ -9,15 +9,15 @@ def load_dataset(dataset_path):
         if len(files) == 0:
             continue
 
-        song = dir.split("\\")[-1]
-        artist = dir.split("\\")[-2]
-        subgenre = dir.split("\\")[-3]
-        genre = dir.split("\\")[-4]
+        path_parts = dir.split("\\")
 
-        # Add full path to all midi files
-        full_path_files = []
-        for filename in files:
-            full_path_files.append(os.path.join(dir, filename))
+        song = path_parts[-1]
+        artist = path_parts[-2]
+        subgenre = path_parts[-3]
+        genre = path_parts[-4]
+
+        # Add full path to midi file and json file
+        full_path_files = [os.path.join(dir, filename) for filename in files]
 
         if genre not in dataset:
             dataset[genre] = {subgenre: {artist: {song: full_path_files}}}
@@ -67,7 +67,7 @@ def get_stats(dataset):
             stats["Sub-Genres"] += 1
             for artist in dataset[genre][subgenre]:
                 stats["Artists"] += 1
-                for songs in dataset[genre][subgenre][artist]:
+                for song in dataset[genre][subgenre][artist]:
                     stats["Songs"] += 1
 
     return stats
