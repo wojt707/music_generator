@@ -1,5 +1,4 @@
 import music21
-import json
 import glob
 import os
 
@@ -23,6 +22,10 @@ def encode_midi(midi_path):
     sequences_by_track = []
 
     for track in midi_file.tracks:
+        if is_percussion_track(track):
+            print("Percussion detected eeeeeeeeeeeeeeeee")
+            continue
+
         pending_notes = []
         sequence = []
         current_time = 0  # In ticks
@@ -118,15 +121,13 @@ def encode_midi(midi_path):
             previous_start_time_ticks = note["start_time_ticks"]
 
         if sequence:
-            instrument_name = "Unknown"
+            instrument_name = "unknown"
             if instrument_id is not None:
                 try:
-                    instrument_name = str(
-                        music21.instrument.instrumentFromMidiProgram(instrument_id)
-                    )
+                    instrument_name = midi_program_to_group(instrument_id)
                 except Exception as e:
                     print(
-                        f"Error: Unable to map instrument_id {instrument_id}. Using 'Unknown'."
+                        f"Error: Unable to map instrument_id {instrument_id}. Using 'unknown'."
                     )
 
             sequences_by_track.append(
@@ -231,14 +232,88 @@ def decode_midi(midi_data, output_path):
     print(f"Decoded MIDI saved to {output_path}")
 
 
+# duplex-maxima == 64.0
+# maxima == 32.0
+# longa == 16.0
+# breve == 8.0
+# whole == 4.0
+# half == 2.0
+# quarter == 1.0
+# eighth == 0.5
+# 16th == 0.25
+# 32nd == 0.125
+# 64th == 0.0625
+# 128th == 0.03125
+# 256th == 0.015625
+# 512th == 0.0078125
+# 1024th == 0.00390625
+# 2048th == 0.001953125
+# zero == 0.0
+
+
 def quarter_length_to_type(q_len: float):
-    if q_len < 0.004:  # omit 1024th notes and shorter
+    if q_len < 0.0078125:  # omit 1024th notes and shorter
         return "zero"
     elif (
         q_len == 128.0
     ):  # for some reason exception is raised when q_len is exactly 128.0
         q_len += 1.0
+    # TODO maybe this -> music21.duration.durationTupleFromQuarterLength
     return music21.duration.quarterLengthToClosestType(q_len)[0]
+
+
+def midi_program_to_group(midi_program: int) -> str:
+    """
+    Maps a MIDI program number to a grouped instrument name.
+    """
+    instrument = ""
+    if midi_program < 0 or midi_program > 127:
+        instrument = "unknown"
+    elif midi_program < 8:
+        instrument = "piano"
+    elif midi_program < 16:
+        instrument = "chromatic percussion"
+    elif midi_program < 24:
+        instrument = "organ"
+    elif midi_program < 32:
+        instrument = "guitar"
+    elif midi_program < 40:
+        instrument = "bass"
+    elif midi_program < 48:
+        instrument = "strings"
+    elif midi_program < 56:
+        instrument = "ensemble"
+    elif midi_program < 64:
+        instrument = "brass"
+    elif midi_program < 72:
+        instrument = "reed"
+    elif midi_program < 80:
+        instrument = "pipe"
+    elif midi_program < 88:
+        instrument = "synth lead"
+    elif midi_program < 96:
+        instrument = "synth pad"
+    elif midi_program < 104:
+        instrument = "synth effects"
+    elif midi_program < 112:
+        instrument = "ethnic"
+    elif midi_program < 120:
+        instrument = "percussive"
+    elif midi_program < 128:
+        instrument = "sound effects"
+
+    return instrument
+
+
+def is_percussion_track(midi_track):
+    """
+    Determines if a track is a percussion track based on Channel 10.
+    """
+    for event in midi_track.events:
+        if isinstance(event, music21.midi.MidiEvent):
+            if event.channel == 9:  # Channel 10 in MIDI
+                return True
+    return False
 
 
 def sequence_to_words(sequence):
@@ -284,29 +359,3 @@ def generate_word_files(dirname):
                 # print(f"Saved: {txt_name}")
         except Exception as e:
             print(f"Error processing {midi}: {e}")
-
-
-# if __name__ == "__main__":
-
-#     TEMP_DATA = r"C:\projects\studia\POLSLrepo_sem7\music_generator\data\testy"
-
-#     # encoded = encode_midi(
-#     #     r"C:\projects\studia\POLSLrepo_sem7\music_generator\data\testy\bagno\no name (6).mid"
-#     # )
-#     # with open("sth.json", "w", encoding="utf-8") as f:
-#     #     json.dump(encoded, f, indent=4)
-#     # generate_word_files(TEMP_DATA)
-#     # generate_word_files(TEMP_DATA)
-#     print(music21.duration.quarterLengthToClosestType(4.0))
-#     print(music21.duration.quarterLengthToClosestType(8.0))
-#     print(music21.duration.quarterLengthToClosestType(16.0))
-#     print(music21.duration.quarterLengthToClosestType(24.0))
-#     print(music21.duration.quarterLengthToClosestType(32.0))
-#     print(music21.duration.quarterLengthToClosestType(64.0))
-#     print(music21.duration.quarterLengthToClosestType(256.0))
-#     print(music21.duration.quarterLengthToClosestType(2048.0))
-#     print(
-#         is_valid_midi(
-#             r"C:\projects\studia\POLSLrepo_sem7\music_generator\data\ready_midi\Rock\Rock-And-Roll\Percy Sledge\Warm And Tender Love\TRPIWBH128F92FD93B.mid"
-#         )
-#     )
