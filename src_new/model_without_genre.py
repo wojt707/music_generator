@@ -20,18 +20,35 @@ class LSTMGenerator(nn.Module):
         dropout=0.2,
     ):
         super(LSTMGenerator, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         self.word_embedding = nn.Embedding(vocab_size, embed_size)
         self.lstm = nn.LSTM(
             embed_size, hidden_size, num_layers, batch_first=True, dropout=dropout
         )
         self.fc = nn.Linear(hidden_size, vocab_size)
 
-    def forward(self, x):
+    def forward(self, x, prev_state):
         word_embed = self.word_embedding(x)  # (batch_size, seq_length, embed_size)
 
-        output, _ = self.lstm(word_embed)
-        output = self.fc(output)
-        return output[:, -1, :]
+        output, state = self.lstm(
+            word_embed, prev_state
+        )  # (batch_size, seq_length, lstm_size)
+        logits = self.fc(output)  # (batch_size, seq_length, vocab_size)
+        return logits, state
+        # return output[:, -1, :]
+
+    def init_state(self, batch_size):
+        return (
+            torch.zeros(
+                self.num_layers, batch_size, self.hidden_size, device=self.device
+            ),
+            torch.zeros(
+                self.num_layers, batch_size, self.hidden_size, device=self.device
+            ),
+        )
 
 
 def load_sequences(file_paths, word_to_idx, seq_length):
@@ -42,6 +59,8 @@ def load_sequences(file_paths, word_to_idx, seq_length):
     for txt in file_paths:
         with open(txt, "r") as f:
             word_sequence = f.read().split(" ")
+        if not word_sequence:
+            continue
         seq_in, seq_out = prepare_sequences(word_sequence, word_to_idx, seq_length)
         input_tokens.extend(seq_in)
         output_tokens.extend(seq_out)
@@ -89,27 +108,25 @@ def create_loaders(input_tokens, output_tokens, batch_size):
     outputs = torch.LongTensor(output_tokens)
 
     dataset = TensorDataset(inputs, outputs)
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-    return data_loader
+    return DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 
 def train_model(
-    model,
+    model: LSTMGenerator,
     train_loader,
     test_loader,
     num_epochs,
     models_path,
     lr=0.001,
-    log_interval=100,
+    log_interval=1000,
 ):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
-    model.to(device)
+    model.to(model.device)
 
-    valid_loss_min = np.Inf
+    test_loss_min = np.Inf
     train_loss_min = np.Inf
     start_epoch = 0
     train_losses, test_losses = [], []
@@ -126,7 +143,7 @@ def train_model(
             train_losses = saved_data.get("train_losses", [])
             test_losses = saved_data.get("test_losses", [])
             start_epoch = len(train_losses)
-            valid_loss_min = min(test_losses)
+            test_loss_min = min(test_losses)
             train_loss_min = min(train_losses)
             print(f"Resuming from epoch {start_epoch + 1}...")
 
@@ -139,16 +156,18 @@ def train_model(
         model.train()
 
         for batch_idx, (inputs, targets) in enumerate(train_loader):
-            inputs, targets = inputs.to(device), targets.to(device)
-
             optimizer.zero_grad()
 
-            # Forward pass
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
+            inputs, targets = inputs.to(model.device), targets.to(model.device)
+
+            state_h, state_c = model.init_state(inputs.size(0))
+            outputs, (state_h, state_c) = model(inputs, (state_h, state_c))
+            outputs_last_step = outputs[:, -1, :]
+            state_h, state_c = state_h.detach(), state_c.detach()
+
+            loss = criterion(outputs_last_step, targets)
             total_train_loss += loss.item()
 
-            # Backward pass
             loss.backward()
             optimizer.step()
 
@@ -157,19 +176,24 @@ def train_model(
                     f"Epoch {epoch + 1}/{num_epochs} \t[Batch {batch_idx}/{len(train_loader)}] \tTraining Loss: {loss.item():.4f}"
                 )
 
+        train_loss = total_train_loss / len(train_loader)
+        train_losses.append(train_loss)
+
         total_test_loss = 0
         with torch.no_grad():
             model.eval()
             for inputs, targets in test_loader:
-                inputs, targets = inputs.to(device), targets.to(device)
-                outputs = model(inputs)
-                test_loss = criterion(outputs, targets)
+                inputs, targets = inputs.to(model.device), targets.to(model.device)
+                state_h, state_c = model.init_state(inputs.size(0))
+
+                outputs, (state_h, state_c) = model(inputs, (state_h, state_c))
+                outputs_last_step = outputs[:, -1, :]
+                state_h, state_c = state_h.detach(), state_c.detach()
+
+                test_loss = criterion(outputs_last_step, targets)
                 total_test_loss += test_loss.item()
 
-        train_loss = total_train_loss / len(train_loader)
         test_loss = total_test_loss / len(test_loader)
-
-        train_losses.append(train_loss)
         test_losses.append(test_loss)
 
         print(
@@ -177,12 +201,12 @@ def train_model(
         )
 
         # Save models if losses improve
-        if test_loss <= valid_loss_min:
+        if test_loss <= test_loss_min:
             print(
-                f"Validation loss decreased ({valid_loss_min:.3f} -> {test_loss:.3f}). Saving model..."
+                f"Test loss decreased ({test_loss_min:.3f} -> {test_loss:.3f}). Saving model..."
             )
             torch.save(model.state_dict(), test_model_path)
-            valid_loss_min = test_loss
+            test_loss_min = test_loss
 
         if train_loss <= train_loss_min:
             print(
