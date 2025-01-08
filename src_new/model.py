@@ -5,7 +5,6 @@ from torch.utils.data import DataLoader, TensorDataset
 
 import numpy as np
 import glob
-import random
 import os
 import json
 
@@ -17,8 +16,18 @@ class LSTMGenerator(nn.Module):
         embed_size: int,
         hidden_size: int,
         num_layers: int,
-        dropout=0.2,
+        dropout: float = 0.2,
     ):
+        """
+        Initializes the LSTM Generator model.
+
+        Parameters:
+        - vocab_size (int): Size of the vocabulary (number of unique tokens).
+        - embed_size (int): Size of the embedding vector for each token.
+        - hidden_size (int): Number of hidden units in the LSTM.
+        - num_layers (int): Number of layers in the LSTM.
+        - dropout (float): Dropout rate applied to the LSTM layers.
+        """
         super(LSTMGenerator, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -30,7 +39,17 @@ class LSTMGenerator(nn.Module):
         )
         self.fc = nn.Linear(hidden_size, vocab_size)
 
-    def forward(self, x, prev_state):
+    def forward(self, x: torch.Tensor, prev_state: tuple) -> tuple:
+        """
+        Forward pass for generating predictions.
+
+        Parameters:
+        - x (torch.Tensor): Input tensor of word indices.
+        - prev_state (tuple): The previous hidden and cell states of the LSTM.
+
+        Returns:
+        - tuple: Logits from the fully connected layer and the updated states.
+        """
         word_embed = self.word_embedding(x)  # (batch_size, seq_length, embed_size)
 
         output, state = self.lstm(
@@ -38,9 +57,17 @@ class LSTMGenerator(nn.Module):
         )  # (batch_size, seq_length, lstm_size)
         logits = self.fc(output)  # (batch_size, seq_length, vocab_size)
         return logits, state
-        # return output[:, -1, :]
 
-    def init_state(self, batch_size):
+    def init_state(self, batch_size: int) -> tuple:
+        """
+        Initializes the hidden and cell states of the LSTM.
+
+        Parameters:
+        - batch_size (int): The batch size for generating sequences.
+
+        Returns:
+        - tuple: Initialized hidden and cell states.
+        """
         return (
             torch.zeros(
                 self.num_layers, batch_size, self.hidden_size, device=self.device
@@ -51,9 +78,17 @@ class LSTMGenerator(nn.Module):
         )
 
 
-def load_sequences(file_paths, word_to_idx, seq_length):
+def load_sequences(file_paths: list, word_to_idx: dict, seq_length: int) -> tuple:
     """
     Loads sequences and corresponding genres from file paths and prepares input-output pairs.
+
+    Parameters:
+    - file_paths (list): List of file paths containing text sequences.
+    - word_to_idx (dict): Mapping from words to their corresponding indices.
+    - seq_length (int): Length of the input sequence.
+
+    Returns:
+    - tuple: Input tokens and output tokens.
     """
     input_tokens, output_tokens = [], []
     for txt in file_paths:
@@ -67,8 +102,17 @@ def load_sequences(file_paths, word_to_idx, seq_length):
     return input_tokens, output_tokens
 
 
-def build_vocab(dirname):
-    word_count = dict()
+def build_vocab(dirname: str) -> tuple:
+    """
+    Builds vocabulary from a directory containing text files.
+
+    Parameters:
+    - dirname (str): Path to the directory containing text files.
+
+    Returns:
+    - tuple: Two dictionaries: word-to-index and index-to-word mappings.
+    """
+    word_count = {}
     for txt in glob.glob(f"{dirname}/**/*.txt", recursive=True):
         word_sequence = []
         with open(txt, "r") as f:
@@ -87,9 +131,17 @@ def build_vocab(dirname):
     return word_to_idx, idx_to_word
 
 
-def prepare_sequences(word_sequence, word_to_idx, seq_length):
+def prepare_sequences(word_sequence: list, word_to_idx: dict, seq_length: int) -> tuple:
     """
     Converts a word sequence into input-output pairs using a sliding window approach.
+
+    Parameters:
+    - word_sequence (list): List of words in the sequence.
+    - word_to_idx (dict): Mapping from words to their indices.
+    - seq_length (int): Length of the input sequence.
+
+    Returns:
+    - tuple: Input tokens and output tokens.
     """
     token_sequence = [
         word_to_idx[word] for word in word_sequence if word in word_to_idx
@@ -102,8 +154,20 @@ def prepare_sequences(word_sequence, word_to_idx, seq_length):
     return input_tokens, output_tokens
 
 
-def create_loaders(input_tokens, output_tokens, batch_size):
+def create_loaders(
+    input_tokens: list, output_tokens: list, batch_size: int
+) -> DataLoader:
+    """
+    Creates DataLoader for training and testing.
 
+    Parameters:
+    - input_tokens (list): List of input token sequences.
+    - output_tokens (list): List of output token sequences.
+    - batch_size (int): Batch size for the DataLoader.
+
+    Returns:
+    - DataLoader: DataLoader for the dataset.
+    """
     inputs = torch.LongTensor(input_tokens)
     outputs = torch.LongTensor(output_tokens)
 
@@ -113,14 +177,28 @@ def create_loaders(input_tokens, output_tokens, batch_size):
 
 def train_model(
     model: LSTMGenerator,
-    train_loader,
-    test_loader,
-    num_epochs,
-    models_path,
-    lr=0.001,
-    log_interval=1000,
-):
+    train_loader: DataLoader,
+    test_loader: DataLoader,
+    num_epochs: int,
+    models_path: str,
+    lr: float = 0.001,
+    log_interval: int = 1000,
+) -> tuple:
+    """
+    Trains the LSTM model and saves the best-performing models.
 
+    Parameters:
+    - model (LSTMGenerator): The LSTM model to be trained.
+    - train_loader (DataLoader): DataLoader for the training dataset.
+    - test_loader (DataLoader): DataLoader for the testing dataset.
+    - num_epochs (int): Number of training epochs.
+    - models_path (str): Path to save the trained models and losses.
+    - lr (float): Learning rate for the optimizer.
+    - log_interval (int): Interval for logging training progress.
+
+    Returns:
+    - tuple: Training and testing losses.
+    """
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
